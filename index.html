@@ -20,6 +20,18 @@
 </section>
 <footer>保留所有原始欄位、欄位值與資料順序，輸出為 Excel 可辨識的 UTF-8 CSV。<br>沒有資料的分類仍會產生含欄位標題的 CSV。原始檔案不會被修改。</footer>
 </main>
+<main aria-labelledby="inventoryTitle">
+<span class="tag">獨立功能 · 不受上方拆單結果影響</span>
+<h1 id="inventoryTitle">可售庫存計算</h1>
+<p>兩份檔案各自依商品貨號加總，再計算：<strong>庫存總和 − 訂購數量總和</strong>。</p>
+<div class="stats">
+<div class="card"><label for="orderFile"><strong>① 訂單明細 CSV</strong><br><small>需要「商品貨號」及「數量」欄位</small></label><input id="orderFile" type="file" accept=".csv,text/csv"><label class="settings" style="margin-top:16px">編碼<select id="orderEncoding"><option value="auto">自動判斷</option><option value="utf-8">UTF-8</option><option value="big5">Big5</option><option value="gb18030">GB18030</option></select></label></div>
+<div class="card"><label for="inventoryFile"><strong>② 庫存明細 CSV</strong><br><small>需要「卖家SKU」及「可用库存」欄位</small></label><input id="inventoryFile" type="file" accept=".csv,text/csv"><label class="settings" style="margin-top:16px">編碼<select id="inventoryEncoding"><option value="auto">自動判斷</option><option value="utf-8">UTF-8</option><option value="big5">Big5</option><option value="gb18030">GB18030</option></select></label></div>
+</div>
+<div id="inventoryStatus" role="status" aria-live="polite" style="white-space:pre-wrap;line-height:1.8;margin-top:22px">請選擇兩份 CSV，再按「計算可售庫存」。</div>
+<div class="actions"><button id="calculateInventory" disabled>計算可售庫存</button><button id="downloadInventory" class="secondary" disabled>下載可售庫存.csv</button></div>
+<footer>輸出欄位：商品貨號、可售庫存、備註。兩份檔案的貨號都會保留，缺少的數量視為 0，負庫存照實保留。<br>庫存明細缺少貨號時，備註會標示「庫存明細中無此貨號，庫存以 0 計算」。數量需為整數；貨號前後空白會移除，比對時保留大小寫及前導零。</footer>
+</main>
 <script>
 'use strict';
 const $=id=>document.getElementById(id);
@@ -85,5 +97,60 @@ for(const name of ['dragenter','dragover'])$('drop').addEventListener(name,e=>{e
 $('drop').addEventListener('dragleave',()=>$('drop').classList.remove('over'));
 $('drop').addEventListener('drop',e=>{e.preventDefault();$('drop').classList.remove('over');if(e.dataTransfer.files.length)load(e.dataTransfer.files[0]);});
 $('pre').onclick=()=>download('pre');$('stock').onclick=()=>download('stock');$('both').onclick=()=>{download('pre');download('stock');};
+
+// Inventory reconciliation has separate files, state, and downloads from order splitting.
+function aggregateSKU(text,skuColumn,quantityColumn,label){
+ const records=parseCSV(text);if(!records.length)throw Error(label+'是空的。');
+ const names=records.shift().values.map(x=>x.trim());
+ for(const name of [skuColumn,quantityColumn])if(names.filter(x=>x===name).length!==1)throw Error(label+'需要且只能有一個「'+name+'」欄位。');
+ const skuIndex=names.indexOf(skuColumn),quantityIndex=names.indexOf(quantityColumn),totals=new Map();
+ records.forEach((r,i)=>{
+  const at=label+'第 '+(i+2)+' 筆 CSV 紀錄';
+  if(r.values.length!==names.length)throw Error(at+'欄位數不符。');
+  const sku=r.values[skuIndex].trim(),raw=r.values[quantityIndex].trim();
+  if(!sku)throw Error(at+'缺少商品貨號。');
+  if(!/^[+-]?\d+$/.test(raw))throw Error(at+'的「'+quantityColumn+'」必須是整數，不能空白。');
+  totals.set(sku,(totals.get(sku)??0n)+BigInt(raw));
+ });
+ return {totals,rows:records.length};
+}
+function inventoryCSV(orderText,inventoryText){
+ const orders=aggregateSKU(orderText,'商品貨號','數量','訂單明細'),inventory=aggregateSKU(inventoryText,'卖家SKU','可用库存','庫存明細');
+ const skus=new Set([...inventory.totals.keys(),...orders.totals.keys()]);
+ const rows=[['商品貨號','可售庫存','備註']];let missing=0,negative=0;
+ for(const sku of skus){
+  const absent=!inventory.totals.has(sku),available=(inventory.totals.get(sku)??0n)-(orders.totals.get(sku)??0n);
+  if(absent)missing++;if(available<0n)negative++;
+  rows.push([sku,available.toString(),absent?'庫存明細中無此貨號，庫存以 0 計算':'']);
+ }
+ const escape=value=>/[",\r\n]/.test(value)?'"'+value.replace(/"/g,'""')+'"':value;
+ return {csv:'\uFEFF'+rows.map(row=>row.map(escape).join(',')).join('\r\n')+'\r\n',count:skus.size,missing,negative,orderRows:orders.rows,inventoryRows:inventory.rows};
+}
+let inventoryOutput=null,inventoryRevision=0;
+function resetInventory(){
+ inventoryRevision++;inventoryOutput=null;$('downloadInventory').disabled=true;
+ $('calculateInventory').disabled=!($('orderFile').files.length&&$('inventoryFile').files.length);
+ $('inventoryStatus').style.color='';$('inventoryStatus').textContent='請選擇兩份 CSV，再按「計算可售庫存」。';
+}
+for(const id of ['orderFile','inventoryFile','orderEncoding','inventoryEncoding'])$(id).addEventListener('change',resetInventory);
+$('calculateInventory').onclick=async()=>{
+ const orderFile=$('orderFile').files[0],inventoryFile=$('inventoryFile').files[0];if(!orderFile||!inventoryFile)return;
+ const version=++inventoryRevision,orderEncoding=$('orderEncoding').value,inventoryEncoding=$('inventoryEncoding').value;
+ inventoryOutput=null;$('downloadInventory').disabled=true;$('calculateInventory').disabled=true;
+ $('inventoryStatus').style.color='';$('inventoryStatus').textContent='正在讀取兩份檔案並計算…';
+ try{
+  const [orderBytes,inventoryBytes]=await Promise.all([orderFile.arrayBuffer(),inventoryFile.arrayBuffer()]);
+  if(version!==inventoryRevision)return;
+  const data=inventoryCSV(decode(orderBytes,orderEncoding).text,decode(inventoryBytes,inventoryEncoding).text);inventoryOutput=data.csv;
+  $('inventoryStatus').textContent='完成：訂單明細 '+data.orderRows.toLocaleString()+' 筆、庫存明細 '+data.inventoryRows.toLocaleString()+' 筆。\n共 '+data.count.toLocaleString()+' 個貨號；庫存明細缺少 '+data.missing.toLocaleString()+' 個（已加備註），負庫存 '+data.negative.toLocaleString()+' 個。';
+  $('downloadInventory').disabled=false;
+ }catch(error){if(version!==inventoryRevision)return;$('inventoryStatus').style.color='#b33232';$('inventoryStatus').textContent='無法處理：'+error.message;}
+ finally{if(version===inventoryRevision)$('calculateInventory').disabled=false;}
+};
+$('downloadInventory').onclick=()=>{
+ if(inventoryOutput===null)return;
+ const url=URL.createObjectURL(new Blob([inventoryOutput],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');
+ a.href=url;a.download='可售庫存.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+};
 </script>
 </html>
