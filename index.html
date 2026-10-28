@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>訂單拆分工具</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f8;color:#243247;font-family:system-ui,"Microsoft JhengHei",sans-serif}main{max-width:760px;margin:64px auto;padding:32px;background:white;border-radius:24px;box-shadow:0 12px 45px #2432470a}h1{margin:8px 0 12px;font-size:30px}p{line-height:1.8;color:#657186}.tag{color:#27766d;font-size:13px;font-weight:700}#drop{display:block;margin:28px 0 18px;padding:38px 20px;border:2px dashed #b8c9d4;border-radius:16px;text-align:center;background:#f8fafc;cursor:pointer}#drop.over{background:#e6f5f0;border-color:#27766d}#drop strong{display:block;font-size:19px;margin-bottom:10px}input{max-width:100%;margin-top:16px}label.settings{display:flex;align-items:center;gap:12px;color:#657186;font-size:14px}select{padding:8px;border:1px solid #ccd5df;border-radius:8px}#status{white-space:pre-wrap;margin:22px 0;line-height:1.7}#status.error{color:#b33232}.stats{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{padding:22px;background:#f2f7f6;border-radius:14px}.card:last-child{background:#f1f4fa}.card b{display:block;font-size:28px;margin:12px 0 8px}.card small{color:#657186}button{border:0;border-radius:10px;padding:13px 20px;background:#27766d;color:white;font-size:15px;cursor:pointer}button:disabled{opacity:.4;cursor:default}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}.secondary{background:#edf1f5;color:#34465c}footer{border-top:1px solid #edf1f5;margin-top:28px;padding-top:18px;color:#657186;font-size:13px;line-height:1.8}[hidden]{display:none!important}@media(max-width:600px){main{margin:16px;padding:22px}.stats{gap:10px}.card{padding:16px}h1{font-size:26px}}
+</style>
+<main>
+<span class="tag">離線使用 · 檔案留在你的電腦</span>
+<h1>訂單拆分工具</h1>
+<p>只要任一筆商品的「選項」欄位含有「預購」或「预购」，同訂單號碼的所有商品就會一起歸入預購單。</p>
+<label id="drop"><strong>將 CSV 拖到這裡</strong>或點選下方選擇檔案<br><input id="file" type="file" accept=".csv,text/csv"></label>
+<label class="settings">檔案編碼 <select id="encoding"><option value="auto">自動判斷（UTF-8 / Big5）</option><option value="utf-8">UTF-8</option><option value="big5">Big5</option><option value="gb18030">簡體中文（GB18030）</option></select></label>
+<div id="status" role="status" aria-live="polite">選擇檔案後，會自動計算分類結果。</div>
+<section id="result" hidden>
+<div class="stats"><div class="card">預購單<b id="preOrders"></b><small id="preRows"></small></div><div class="card">現貨單<b id="stockOrders"></b><small id="stockRows"></small></div></div>
+<div class="actions"><button id="both">拆分並下載兩份 CSV</button><button id="pre" class="secondary">下載預購單</button><button id="stock" class="secondary">下載現貨單</button></div>
+<p style="font-size:13px">若瀏覽器詢問是否允許下載多個檔案，請選擇允許；也可以用旁邊兩個按鈕分別下載。</p>
+</section>
+<footer>保留所有原始欄位、欄位值與資料順序，輸出為 Excel 可辨識的 UTF-8 CSV。<br>沒有資料的分類仍會產生含欄位標題的 CSV。原始檔案不會被修改。</footer>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let currentFile=null, output=null, revision=0;
+// Keep each original CSV record so quoted numbers, commas, and line breaks survive unchanged.
+function parseCSV(text){
+ text=text.replace(/^\uFEFF/,'');
+ const records=[]; let values=[],value='',quoted=false,closed=false,start=0;
+ function finish(end){values.push(value);const raw=text.slice(start,end);if(raw.trim()!=='')records.push({values,raw});values=[];value='';closed=false;}
+ for(let i=0;i<text.length;i++){
+  const c=text[i];
+  if(quoted){if(c==='"'){if(text[i+1]==='"'){value+='"';i++;}else{quoted=false;closed=true;}}else value+=c;continue;}
+  if(c===','){values.push(value);value='';closed=false;}
+  else if(c==='\r'||c==='\n'){finish(i);if(c==='\r'&&text[i+1]==='\n')i++;start=i+1;}
+  else if(c==='"'){if(value!==''||closed)throw Error('CSV 引號格式不正確，請重新匯出檔案。');quoted=true;}
+  else{if(closed)throw Error('CSV 引號結尾後有多餘文字，請重新匯出檔案。');value+=c;}
+ }
+ if(quoted)throw Error('CSV 有尚未關閉的引號，請確認檔案完整。');
+ finish(text.length);return records;
+}
+function splitCSV(text){
+ const records=parseCSV(text);if(!records.length)throw Error('檔案是空的。');
+ const header=records.shift(), names=header.values.map(x=>x.trim());
+ for(const name of ['訂單號碼','選項'])if(names.filter(x=>x===name).length!==1)throw Error('需要且只能有一個「'+name+'」欄位，請確認選擇的是正確的訂單 CSV。');
+ const orderIndex=names.indexOf('訂單號碼'),optionIndex=names.indexOf('選項');
+ const preIds=new Set(),allIds=new Set();
+ records.forEach((r,i)=>{
+  if(r.values.length!==names.length)throw Error('第 '+(i+2)+' 筆 CSV 紀錄欄位數不符，請檢查原始檔案。');
+  r.order=r.values[orderIndex].trim();
+  if(!r.order)throw Error('第 '+(i+2)+' 筆 CSV 紀錄缺少訂單號碼，無法安全分類。');
+  allIds.add(r.order);if(/預購|预购/.test(r.values[optionIndex]))preIds.add(r.order);
+ });
+ const pre=[],stock=[];records.forEach(r=>(preIds.has(r.order)?pre:stock).push(r.raw));
+ const csv=rows=>'\uFEFF'+[header.raw,...rows].join('\r\n')+'\r\n';
+ return {pre:csv(pre),stock:csv(stock),preOrders:preIds.size,stockOrders:allIds.size-preIds.size,preRows:pre.length,stockRows:stock.length,total:records.length};
+}
+function decode(bytes,encoding){
+ if(encoding!=='auto')return {text:new TextDecoder(encoding,{fatal:true}).decode(bytes),encoding};
+ for(const enc of ['utf-8','big5'])try{return {text:new TextDecoder(enc,{fatal:true}).decode(bytes),encoding:enc};}catch{}
+ throw Error('無法自動辨識編碼，請改選 UTF-8、Big5 或簡體中文後重試。');
+}
+async function load(file){
+ const version=++revision;currentFile=file;output=null;$('result').hidden=true;$('status').className='';
+ if(!file)return;
+ $('status').textContent='正在讀取 '+file.name+'…';
+ try{
+  const bytes=await file.arrayBuffer();if(version!==revision)return;
+  const decoded=decode(bytes,$('encoding').value),data=splitCSV(decoded.text);output=data;
+  for(const id of ['preOrders','stockOrders'])$(id).textContent=data[id].toLocaleString()+' 張訂單';
+  for(const id of ['preRows','stockRows'])$(id).textContent=data[id].toLocaleString()+' 筆商品資料';
+  $('status').textContent=file.name+' · 共 '+data.total.toLocaleString()+' 筆商品資料 · '+decoded.encoding.toUpperCase()+(data.preRows===0?'\n「選項」欄位沒有找到預購字樣，所有資料均歸入現貨單。':'');
+  $('result').hidden=false;
+ }catch(error){if(version!==revision)return;$('status').className='error';$('status').textContent='無法處理：'+error.message;}
+}
+function download(kind){
+ if(!output)return;
+ const url=URL.createObjectURL(new Blob([output[kind]],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');
+ a.href=url;a.download=kind==='pre'?'預購單.csv':'現貨單.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+$('file').addEventListener('change',e=>load(e.target.files[0]));
+$('encoding').addEventListener('change',()=>{if(currentFile)load(currentFile);});
+for(const name of ['dragenter','dragover'])$('drop').addEventListener(name,e=>{e.preventDefault();$('drop').classList.add('over');});
+$('drop').addEventListener('dragleave',()=>$('drop').classList.remove('over'));
+$('drop').addEventListener('drop',e=>{e.preventDefault();$('drop').classList.remove('over');if(e.dataTransfer.files.length)load(e.dataTransfer.files[0]);});
+$('pre').onclick=()=>download('pre');$('stock').onclick=()=>download('stock');$('both').onclick=()=>{download('pre');download('stock');};
+</script>
+</html>

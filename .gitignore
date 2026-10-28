@@ -1,0 +1,5 @@
+# Order data stays on the local computer.
+*.csv
+.vercel/
+.env
+.env.*
