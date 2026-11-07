@@ -1,5 +1,29 @@
-# Order data stays on the local computer.
+# Local order and inventory data
 *.csv
-.vercel/
+*.tsv
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+
+# Generated files, dependencies and caches
+/outputs/
+node_modules/
+/coverage/
+/.vercel/
+__pycache__/
+*.pyc
+
+# Local environment settings (keep shareable examples)
 .env
 .env.*
+!.env.example
+!.env.*.example
+
+# Temporary files and operating system metadata
+~$*
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
