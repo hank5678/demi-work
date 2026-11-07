@@ -7,7 +7,7 @@ function invalidate(key){
  if(key==='split'){output=null;$('result').hidden=true;}
  else{inventoryOutput=null;$('downloadInventory').disabled=true;$('calculateInventory').disabled=!(sources.orders.book&&sources.inventory.book);}
 }
-function validateFile(file){if(!/\.xlsx$/i.test(file.name))throw Error('請選擇 .xlsx Excel 檔案。');}
+function validateFile(file){if(!/\.xlsx?$/i.test(file.name))throw Error('請選擇 .xlsx 或 .xls Excel 檔案。');}
 async function loadSource(key,file){
  const source=sources[key],version=source.revision=(source.revision??0)+1;
  source.book=null;$(source.select).replaceChildren();$(source.select).disabled=true;invalidate(key);

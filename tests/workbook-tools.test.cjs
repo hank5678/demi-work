@@ -41,6 +41,33 @@ test('selecting another worksheet uses only that worksheet',()=>{
  X.utils.book_append_sheet(b,X.utils.aoa_to_sheet([['訂單號碼','選項'],['001','預購']]),'訂單');
  assert.throws(()=>T.splitWorkbook(b,'說明'),/第一列/);assert.equal(T.splitWorkbook(roundtrip(b),'訂單').preOrders,1);
 });
+test('legacy XLS orders split and export to XLSX with Chinese, zeros and multiple sheets',()=>{
+ const b=book([['說明']],'說明');
+ X.utils.book_append_sheet(b,X.utils.aoa_to_sheet([['訂單號碼','選項','商品貨號','數量'],['0001','現貨','0012',2],['0002','現貨','0023',1],['0001','預購','0012',3]]),'訂單');
+ const bytes=X.write(b,{type:'array',bookType:'biff8'});
+ assert.equal(new Uint8Array(bytes)[0],0xd0);
+ const input=T.readWorkbook(bytes),result=T.splitWorkbook(input,'訂單');
+ assert.deepEqual(input.SheetNames,['說明','訂單']);assert.equal(input.cfb,undefined);
+ assert.deepEqual([result.preOrders,result.stockOrders,result.preRows],[1,1,2]);
+ assert.deepEqual(rows(roundtrip(result.pre)),[['訂單號碼','選項','商品貨號','數量'],['0001','現貨','0012',2],['0001','預購','0012',3]]);
+ assert.equal(new Uint8Array(T.writeWorkbook(result.pre))[0],0x50);
+});
+test('XLS and XLSX inventory inputs work in either combination',()=>{
+ const orders=book([['商品貨號','數量'],['0012',2],['0012',3],['缺貨',1]]);
+ const inventory=book([['卖家SKU','可用库存'],[12,10]]);inventory.Sheets.資料.A2.z='0000';
+ for(const orderFormat of ['biff8','xlsx'])for(const stockFormat of ['biff8','xlsx']){
+  const read=(b,format)=>T.readWorkbook(X.write(b,{type:'array',bookType:format}));
+  const result=T.inventoryWorkbook(read(orders,orderFormat),'資料',read(inventory,stockFormat),'資料');
+  assert.deepEqual(rows(roundtrip(result.book)),[['商品貨號','可售庫存','備註'],['0012',5,''],['缺貨',-1,'庫存明細中無此貨號，庫存以 0 計算']]);
+ }
+});
+test('older BIFF XLS binary variants can be read',()=>{
+ const b=book([['ID','value'],['001',2]]);
+ for(const bookType of ['biff2','biff3','biff4','biff5']){
+  const result=T.readWorkbook(X.write(b,{type:'array',bookType}));
+  assert.deepEqual(rows(result),[['ID','value'],['001',2]]);
+ }
+});
 test('invalid files, headers, order IDs, quantities and uncached formulas are rejected',()=>{
  assert.throws(()=>T.readWorkbook(new TextEncoder().encode('訂單號碼,選項\n001,預購')),/xlsx/);
  assert.throws(()=>T.readWorkbook(new Uint8Array([80,75,0,0])),/無法讀取/);

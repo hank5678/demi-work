@@ -3,12 +3,16 @@
 const X=typeof module==='object'&&module.exports?require('./vendor/xlsx.full.min.js'):root.XLSX;
 function readWorkbook(bytes){
  const signature=new Uint8Array(bytes);
- if(signature[0]!==0x50||signature[1]!==0x4b)throw Error('請選擇有效的 .xlsx Excel 檔案。');
+ const zip=signature[0]===0x50&&signature[1]===0x4b;
+ const cfb=[0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1].every((v,i)=>signature[i]===v);
+ const biff=signature[0]===0x09&&[0x00,0x02,0x04,0x08].includes(signature[1]);
+ if(!zip&&!cfb&&!biff)throw Error('請選擇有效的 .xlsx 或 .xls Excel 檔案。');
  let book;
  try{book=X.read(bytes,{type:'array',cellNF:true,bookFiles:true});}
  catch{throw Error('無法讀取 Excel，請確認檔案完整且未加密。');}
- if(!book.keys?.includes('xl/workbook.xml')||!book.SheetNames.length)throw Error('請選擇有效的 .xlsx Excel 檔案。');
- delete book.files;delete book.keys;
+ const valid=zip?book.keys?.includes('xl/workbook.xml'):cfb?book.cfb?.FullPaths.some(path=>/\/(Workbook|Book)$/.test(path)):biff;
+ if(!valid||!book.SheetNames.length)throw Error('請選擇有效的 .xlsx 或 .xls Excel 檔案。');
+ delete book.files;delete book.keys;delete book.cfb;
  return book;
 }
 function text(cell){

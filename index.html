@@ -10,7 +10,7 @@
 <span class="tag">離線使用 · 檔案留在你的電腦</span>
 <h1>訂單拆分工具</h1>
 <p>只要任一筆商品的「選項」欄位含有「預購」或「预购」，同訂單號碼的所有商品就會一起歸入預購單。</p>
-<label id="drop"><strong>將 Excel（.xlsx） 拖到這裡</strong>或點選下方選擇檔案<br><input id="file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+<label id="drop"><strong>將 Excel（.xlsx / .xls）拖到這裡</strong>或點選下方選擇檔案<br><input id="file" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
 <label class="settings">工作表 <select id="splitSheet" disabled aria-label="拆單工作表"></select></label>
 <div id="status" role="status" aria-live="polite">選擇檔案後，會自動計算分類結果。</div>
 <section id="result" hidden>
@@ -25,10 +25,10 @@
 <h1 id="inventoryTitle">可售庫存計算</h1>
 <p>兩份檔案各自依商品貨號加總，再計算：<strong>庫存總和 − 訂購數量總和</strong>。</p>
 <div class="stats">
-<div class="card"><label for="orderFile"><strong>① 訂單明細 Excel（.xlsx）</strong><br><small>需要「商品貨號」及「數量」欄位</small></label><input id="orderFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><label class="settings" style="margin-top:16px">工作表<select id="orderSheet" disabled></select></label></div>
-<div class="card"><label for="inventoryFile"><strong>② 庫存明細 Excel（.xlsx）</strong><br><small>需要「卖家SKU」及「可用库存」欄位</small></label><input id="inventoryFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><label class="settings" style="margin-top:16px">工作表<select id="inventorySheet" disabled></select></label></div>
+<div class="card"><label for="orderFile"><strong>① 訂單明細 Excel（.xlsx / .xls）</strong><br><small>需要「商品貨號」及「數量」欄位</small></label><input id="orderFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"><label class="settings" style="margin-top:16px">工作表<select id="orderSheet" disabled></select></label></div>
+<div class="card"><label for="inventoryFile"><strong>② 庫存明細 Excel（.xlsx / .xls）</strong><br><small>需要「卖家SKU」及「可用库存」欄位</small></label><input id="inventoryFile" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"><label class="settings" style="margin-top:16px">工作表<select id="inventorySheet" disabled></select></label></div>
 </div>
-<div id="inventoryStatus" role="status" aria-live="polite" style="white-space:pre-wrap;line-height:1.8;margin-top:22px">請選擇兩份 Excel（.xlsx），再按「計算可售庫存」。</div>
+<div id="inventoryStatus" role="status" aria-live="polite" style="white-space:pre-wrap;line-height:1.8;margin-top:22px">請選擇兩份 Excel（.xlsx / .xls），再按「計算可售庫存」。</div>
 <div class="actions"><button id="calculateInventory" disabled>計算可售庫存</button><button id="downloadInventory" class="secondary" disabled>下載可售庫存.xlsx</button></div>
 <footer>輸出欄位：商品貨號、可售庫存、備註。兩份檔案的貨號都會保留，缺少的數量視為 0，負庫存照實保留，超過 15 位數的整數以文字保留精度。<br>庫存明細缺少貨號時，備註會標示「庫存明細中無此貨號，庫存以 0 計算」。所選工作表第一列需為欄位標題。數量需為整數；貨號前後空白會移除，比對時保留大小寫及前導零。</footer>
 </main>
